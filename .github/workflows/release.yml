@@ -22,9 +22,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.32.x'
           channel: stable
-          cache: true
 
       - name: Get dependencies
         run: flutter pub get
@@ -54,9 +52,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.32.x'
           channel: stable
-          cache: true
 
       - name: Get dependencies
         run: flutter pub get
