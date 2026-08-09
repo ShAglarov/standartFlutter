@@ -50,12 +50,14 @@ class ResidentHomeScreen extends ConsumerStatefulWidget {
   ConsumerState<ResidentHomeScreen> createState() => _ResidentHomeScreenState();
 }
 
-class _ResidentHomeScreenState extends ConsumerState<ResidentHomeScreen> {
+class _ResidentHomeScreenState extends ConsumerState<ResidentHomeScreen>
+    with WidgetsBindingObserver {
   StreamSubscription<Map<String, dynamic>>? _wsSub;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadProfile();
 
     // КРИТИЧНО: Подключаем WebSocket при старте приложения.
@@ -80,8 +82,21 @@ class _ResidentHomeScreenState extends ConsumerState<ResidentHomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _wsSub?.cancel();
     super.dispose();
+  }
+
+  /// При возвращении из фона — переподключаем WS и обновляем инциденты,
+  /// чтобы отобразить изменения статусов, произошедшие пока приложение было свёрнуто.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      debugPrint('🔄 [ResidentHome] App resumed → reconnecting WS + refreshing incidents');
+      ref.read(realtimeServiceProvider).reconnectNow();
+      ref.invalidate(residentIncidentsProvider);
+      _loadProfile();
+    }
   }
 
   Future<void> _loadProfile() async {
