@@ -79,45 +79,13 @@ jobs:
           path: standartFlutter-${{ github.ref_name }}-windows.zip
 
   # ─────────────────────────────────────────────
-  # macOS (unsigned — personal use)
-  # ─────────────────────────────────────────────
-  build-macos:
-    name: Build macOS App
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.32.x'
-          channel: stable
-          cache: true
-
-      - name: Get dependencies
-        run: flutter pub get
-
-      - name: Run build_runner
-        run: dart run build_runner build --delete-conflicting-outputs
-
-      - name: Build macOS
-        run: flutter build macos --release
-
-      - name: Package as zip
-        run: |
-          cd build/macos/Build/Products/Release
-          zip -r $GITHUB_WORKSPACE/standartFlutter-${{ github.ref_name }}-macos.zip *.app
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: macos-zip
-          path: standartFlutter-${{ github.ref_name }}-macos.zip
-
-  # ─────────────────────────────────────────────
   # Create GitHub Release
   # ─────────────────────────────────────────────
   release:
     name: Create Release
-    needs: [build-android, build-windows, build-macos]
+    # Запускается даже если одна из сборок упала
+    if: always()
+    needs: [build-android, build-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -127,6 +95,9 @@ jobs:
         with:
           merge-multiple: true
 
+      - name: List downloaded files
+        run: ls -la
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -135,4 +106,3 @@ jobs:
           files: |
             standartFlutter-${{ github.ref_name }}.apk
             standartFlutter-${{ github.ref_name }}-windows.zip
-            standartFlutter-${{ github.ref_name }}-macos.zip
