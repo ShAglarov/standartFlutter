@@ -97,7 +97,14 @@ class AuthInterceptor extends Interceptor {
           final response = await dio.fetch(opts);
           return handler.resolve(response);
         } catch (retryError) {
-          // Retry also failed — propagate the error
+          // Retry also failed — if still 401 after fresh token, force logout
+          // (token type mismatch: e.g. staff token on resident endpoint)
+          if (retryError is DioException && retryError.response?.statusCode == 401) {
+            print('❌ [AuthInterceptor] Retry after refresh still 401 — forcing logout');
+            await _storageService.clearAuthData();
+            _eventService.fire(AppEvent.logout);
+            return handler.next(retryError);
+          }
           if (retryError is DioException) {
             return handler.next(retryError);
           }

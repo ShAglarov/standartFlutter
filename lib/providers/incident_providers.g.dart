@@ -118,7 +118,7 @@ final class SingleIncidentProvider
   }
 }
 
-String _$singleIncidentHash() => r'924f83e7cd4e163072bde0106280c5d8ec2d32b2';
+String _$singleIncidentHash() => r'2bb4dec638f49ab8f2ee042403456952917b375c';
 
 final class SingleIncidentFamily extends $Family
     with $FunctionalFamilyOverride<Stream<IncidentResponse?>, int> {

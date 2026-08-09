@@ -16,9 +16,13 @@ class AppConstants {
   static const String logout = '/auth/logout';
   static const String currentUser = '/users/me';
   
+  // Resident Endpoints
+  static const String residentLogin = '/residents/login';
+  static const String residentMe = '/residents/me';
+  static const String residentIncidents = '/residents/me/incidents';
+  
   // Storage Keys
   static const String accessTokenKey = 'access_token';
   static const String refreshTokenKey = 'refresh_token';
   static const String userProfileKey = 'user_profile';
 }
-

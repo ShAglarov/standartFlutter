@@ -1,8 +1,9 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import '../services/auth_service.dart';
+import '../services/resident_auth_service.dart';
 import '../services/secure_storage_service.dart';
-import '../services/realtime_service.dart';
+import '../services/event_service.dart';
 
 part 'auth_providers.g.dart';
 
@@ -38,8 +39,19 @@ class AuthState {
 
 @riverpod
 class Auth extends _$Auth {
+  StreamSubscription? _eventSubscription;
+
   @override
   AuthState build() {
+    final eventService = ref.watch(eventServiceProvider);
+    _eventSubscription?.cancel();
+    _eventSubscription = eventService.events.listen((event) {
+      if (event == AppEvent.logout) {
+        state = AuthState(status: AuthStatus.unauthenticated);
+      }
+    });
+    ref.onDispose(() => _eventSubscription?.cancel());
+    
     _checkAuth();
     return AuthState(status: AuthStatus.initial, isLoading: true);
   }
@@ -57,7 +69,7 @@ class Auth extends _$Auth {
   Future<void> login(String username, String password) async {
     state = state.copyWith(isLoading: true, errorMessage: null);
     try {
-      final authService = ref.read(authServiceProvider);
+      final authService = ref.read(residentAuthServiceProvider);
       await authService.login(username, password);
       state = state.copyWith(status: AuthStatus.authenticated, isLoading: false);
     } catch (e) {
@@ -73,10 +85,12 @@ class Auth extends _$Auth {
           final statusCode = e.response!.statusCode;
           if (statusCode == 401) {
             errorMessage = 'Неверный логин или пароль.';
+          } else if (statusCode == 403) {
+            errorMessage = e.response?.data['detail'] ?? 'Доступ запрещён.';
           } else if (statusCode == 400) {
             errorMessage = e.response?.data['detail'] ?? 'Неверный запрос.';
           } else if (statusCode != null && statusCode >= 500) {
-            errorMessage = 'Ошибка сервера. Пожалуйста, попробуйте позже.';
+            errorMessage = 'Ошибка сервера. Попробуйте позже.';
           } else {
              errorMessage = 'Ошибка: ${e.response?.statusMessage}';
           }
@@ -92,18 +106,7 @@ class Auth extends _$Auth {
   }
 
   Future<void> logout() async {
-    // >>> LAST GASP: Отправляем финальный pong с GPS ДО очистки токенов
-    try {
-      final realtimeService = ref.read(realtimeServiceProvider);
-      realtimeService.sendLastPong();
-      // Даём WebSocket 500мс на фактическую отправку фрейма
-      await Future.delayed(const Duration(milliseconds: 500));
-      realtimeService.disconnect();
-    } catch (_) {
-      // RealtimeService может быть не инициализирован — не критично
-    }
-    
-    final authService = ref.read(authServiceProvider);
+    final authService = ref.read(residentAuthServiceProvider);
     await authService.logout();
     state = AuthState(status: AuthStatus.unauthenticated);
   }
