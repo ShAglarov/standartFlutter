@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:async';
 import '../services/resident_auth_service.dart';
 import '../services/realtime_service.dart';
+import '../services/sync_service.dart';
 import '../models/resident_models.dart';
 import '../models/incident_models.dart';
 import '../utils/app_theme.dart';
@@ -20,8 +21,23 @@ final residentProfileProvider = NotifierProvider<ResidentProfileNotifier, Reside
   ResidentProfileNotifier.new,
 );
 
-/// Провайдер для загрузки инцидентов жильца
+/// Счётчик для принудительного обновления residentIncidentsProvider.
+/// Инкрементируется при получении WS-обновления entity_type == 'incident'.
+class _ResidentRefreshNotifier extends Notifier<int> {
+  @override
+  int build() => 0;
+  void increment() => state++;
+}
+
+final _residentRefreshTrigger = NotifierProvider<_ResidentRefreshNotifier, int>(
+  _ResidentRefreshNotifier.new,
+);
+
+/// Провайдер для загрузки инцидентов жильца.
 final residentIncidentsProvider = FutureProvider<List<IncidentResponse>>((ref) async {
+  // Зависимость от счётчика: каждый инкремент вызывает перезагрузку.
+  ref.watch(_residentRefreshTrigger);
+
   final authService = ref.watch(residentAuthServiceProvider);
   final rawIncidents = await authService.getMyIncidents();
   return rawIncidents.map((json) => IncidentResponse.fromJson(json)).toList();
@@ -41,22 +57,25 @@ class _ResidentHomeScreenState extends ConsumerState<ResidentHomeScreen> {
   void initState() {
     super.initState();
     _loadProfile();
-    _listenWS();
-  }
 
-  void _listenWS() {
-    try {
-      final realtime = ref.read(realtimeServiceProvider);
-      _wsSub = realtime.messages.listen((msg) {
-        final data = msg['data'] as Map<String, dynamic>?;
-        if (data == null) return;
-        final entityType = data['entity_type'] ?? msg['entity_type'];
-        if (entityType == 'incident') {
-          // Перезагружаем список инцидентов
-          ref.invalidate(residentIncidentsProvider);
-        }
-      });
-    } catch (_) {}
+    // КРИТИЧНО: Подключаем WebSocket при старте приложения.
+    ref.read(realtimeServiceProvider).connect();
+
+    // Eager initialization DataSyncService + SyncService.
+    ref.read(syncServiceProvider);
+
+    // Слушаем WS-сообщения: при обновлении инцидента инкрементируем счётчик,
+    // что вызывает перезагрузку residentIncidentsProvider.
+    final realtime = ref.read(realtimeServiceProvider);
+    _wsSub = realtime.messages.listen((msg) {
+      final data = msg['data'] as Map<String, dynamic>?;
+      if (data == null) return;
+      final entityType = data['entity_type'] ?? msg['entity_type'];
+      if (entityType == 'incident') {
+        print('🎯 [ResidentHome] WS incident update → refreshing list');
+        ref.read(_residentRefreshTrigger.notifier).increment();
+      }
+    });
   }
 
   @override

@@ -4,6 +4,7 @@ import 'dart:async';
 import '../models/incident_models.dart';
 import '../services/resident_auth_service.dart';
 import '../services/realtime_service.dart';
+import '../providers/incident_providers.dart';
 import '../widgets/incident_detail/boiler_house_info_card.dart';
 import '../widgets/incident_detail/affected_houses_card.dart';
 import '../widgets/incident_detail/incident_description_card.dart';
@@ -36,6 +37,12 @@ class _ResidentIncidentDetailScreenState
     super.initState();
     _loadIncident();
     _listenIncidentWS();
+
+    // Реагируем на globalRefreshEvent — DataSyncService обработал WS-обновление,
+    // перезагружаем данные инцидента, чтобы отобразить свежий статус.
+    ref.listenManual(globalRefreshEventProvider, (_, __) {
+      _loadIncident(silent: true);
+    });
   }
 
   void _listenIncidentWS() {

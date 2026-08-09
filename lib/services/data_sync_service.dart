@@ -288,13 +288,16 @@ class DataSyncService {
         cleanData.remove('photos');
         
         final incident = IncidentResponse.fromJson(cleanData);
+        print('✅ [DataSync] Incident parsed OK: id=${incident.id}, status=${incident.status?.name}');
         await _syncRepo.upsertIncidents([incident]);
+        print('✅ [DataSync] Incident upserted to DB: id=${incident.id}');
         // КРИТИЧНО: Принудительный UI refresh после upsert инцидента.
         // Без этого вызова Drift stream может не переэмитить данные из таблицы
         // affectedHouses, и locationIdsWithIncidents в MapData не обновится —
         // дом не окрасится красным до перезапуска приложения.
         _fireRefreshIfNotBatch();
       } catch (e) {
+        print('❌ [DataSync] Failed to parse/upsert incident entity_data: $e');
         dev.log('[DataSync] Failed to parse incident entity_data: $e', name: 'SYNC');
       }
     }
@@ -428,9 +431,12 @@ class DataSyncService {
   /// Only fires globalRefreshEvent if we're NOT in batch mode.
   /// In batch mode, exitBatchMode() fires it once at the end.
   void _fireRefreshIfNotBatch() {
-    if (!_batchMode) {
-      _ref.read(globalRefreshEventControllerProvider).add(null);
+    if (_batchMode) {
+      print('⏸️ [DataSync] _fireRefreshIfNotBatch SKIPPED (batchMode=true)');
+      return;
     }
+    print('🔔 [DataSync] _fireRefreshIfNotBatch FIRED → globalRefreshEvent');
+    _ref.read(globalRefreshEventControllerProvider).add(null);
   }
 
   Future<void> _trackActionId(dynamic actionId) async {
