@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:async';
 import '../services/resident_auth_service.dart';
 import '../services/realtime_service.dart';
-import '../services/sync_service.dart';
 import '../models/resident_models.dart';
 import '../models/incident_models.dart';
 import '../utils/app_theme.dart';
@@ -62,9 +61,6 @@ class _ResidentHomeScreenState extends ConsumerState<ResidentHomeScreen>
 
     // КРИТИЧНО: Подключаем WebSocket при старте приложения.
     ref.read(realtimeServiceProvider).connect();
-
-    // Eager initialization DataSyncService + SyncService.
-    ref.read(syncServiceProvider);
 
     // Слушаем WS-сообщения: при обновлении инцидента инкрементируем счётчик,
     // что вызывает перезагрузку residentIncidentsProvider.

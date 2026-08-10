@@ -97,12 +97,22 @@ class AuthInterceptor extends Interceptor {
           final response = await dio.fetch(opts);
           return handler.resolve(response);
         } catch (retryError) {
-          // Retry also failed — if still 401 after fresh token, force logout
-          // (token type mismatch: e.g. staff token on resident endpoint)
+          // Retry also failed — if still 401 after fresh token, check path
           if (retryError is DioException && retryError.response?.statusCode == 401) {
-            print('❌ [AuthInterceptor] Retry after refresh still 401 — forcing logout');
-            await _storageService.clearAuthData();
-            _eventService.fire(AppEvent.logout);
+            final path = err.requestOptions.path;
+            // Only force logout for auth-critical endpoints (profile, auth).
+            // Non-critical endpoints (sync, presence) may legitimately 401
+            // for resident tokens hitting staff-only routes — just skip them.
+            final isCriticalPath = path.contains('/me') ||
+                path.startsWith('/auth/') ||
+                path.startsWith('/residents/');
+            if (isCriticalPath) {
+              print('❌ [AuthInterceptor] Retry after refresh still 401 on critical path ($path) — forcing logout');
+              await _storageService.clearAuthData();
+              _eventService.fire(AppEvent.logout);
+              return handler.next(retryError);
+            }
+            print('⚠️ [AuthInterceptor] Retry after refresh still 401 on non-critical path ($path) — skipping logout');
             return handler.next(retryError);
           }
           if (retryError is DioException) {
