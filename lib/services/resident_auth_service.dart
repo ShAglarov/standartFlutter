@@ -76,6 +76,32 @@ class ResidentAuthService {
   Future<void> logout() async {
     await _storage.clearAuthData();
   }
+
+  /// Получение управляющей компании дома жильца
+  Future<Map<String, dynamic>?> getMyManagementCompany() async {
+    try {
+      final response = await _dio.get(AppConstants.residentManagementCompany);
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        return null; // УК не найдена — это нормально
+      }
+      rethrow;
+    }
+  }
+
+  /// Получение лицевых счетов жильца
+  Future<List<Map<String, dynamic>>?> getMyAccount() async {
+    try {
+      final response = await _dio.get(AppConstants.residentAccount);
+      return (response.data as List).cast<Map<String, dynamic>>();
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        return null; // Счёт не найден — это нормально
+      }
+      rethrow;
+    }
+  }
 }
 
 /// Ответ от POST /residents/login

@@ -20,6 +20,8 @@ class AppConstants {
   static const String residentLogin = '/residents/login';
   static const String residentMe = '/residents/me';
   static const String residentIncidents = '/residents/me/incidents';
+  static const String residentManagementCompany = '/residents/me/management-company';
+  static const String residentAccount = '/residents/me/account';
   
   // Storage Keys
   static const String accessTokenKey = 'access_token';
