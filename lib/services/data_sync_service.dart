@@ -180,7 +180,7 @@ class DataSyncService {
           break;
         case 'incident_comment':
         case 'comment':
-          await _handleComment(actionType, entityIdRaw, entityData);
+          await _handleComment(actionType, entityIdRaw, entityData, deviceId: deviceId);
           break;
         case 'management_company':
           // TODO: implement if/when MC models are added
@@ -349,9 +349,20 @@ class DataSyncService {
     }
   }
 
-  Future<void> _handleComment(String actionType, dynamic entityId, Map<String, dynamic>? entityData) async {
+  Future<void> _handleComment(String actionType, dynamic entityId, Map<String, dynamic>? entityData, {String? deviceId}) async {
     // We only care about creates/updates for now
     if (actionType == 'delete') return;
+
+    // Echo suppression for comments: when we send a comment via sendComment(),
+    // the POST response is immediately saved to the local DB. The WebSocket
+    // then echoes the same comment back to us, which would trigger a redundant
+    // upsert → Drift stream re-emit → brief UI duplicate ("flash"). Since
+    // comments have no server-side generated fields beyond what POST already
+    // returns, we can safely skip the echo.
+    if (deviceId != null && deviceId == _myDeviceId) {
+      dev.log('[DataSync] Echo suppressed: comment from own device (id=$entityId)', name: 'SYNC');
+      return;
+    }
 
     if (entityData != null) {
       try {
