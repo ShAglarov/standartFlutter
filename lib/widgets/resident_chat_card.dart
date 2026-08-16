@@ -127,8 +127,16 @@ class _ResidentChatCardState extends ConsumerState<ResidentChatCard> {
         '/residents/me/incidents/${widget.incidentId}/comments',
         data: {'text': text},
       );
+      final newComment = Map<String, dynamic>.from(response.data as Map);
       setState(() {
-        _comments.add(Map<String, dynamic>.from(response.data as Map));
+        // Guard against duplicate: while awaiting POST, the WS echo may have
+        // already triggered _silentRefresh() which added this comment.
+        final newId = newComment['id'];
+        final alreadyExists = newId != null &&
+            _comments.any((c) => c['id'] == newId || c['id'].toString() == newId.toString());
+        if (!alreadyExists) {
+          _comments.add(newComment);
+        }
         _isSending = false;
       });
       _scrollToBottom();
