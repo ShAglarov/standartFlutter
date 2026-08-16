@@ -1,6 +1,7 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../models/incident_models.dart';
 import '../services/comment_service.dart';
+import '../services/data_sync_service.dart';
 import '../services/realtime_service.dart';
 import '../repositories/sync_repository.dart';
 import 'dart:developer' as dev;
@@ -37,9 +38,12 @@ class IncidentChat extends _$IncidentChat {
   Future<void> sendComment(String text) async {
     final commentService = ref.read(commentServiceProvider);
     final syncRepo = ref.read(syncRepositoryProvider);
+    final dataSync = ref.read(dataSyncServiceProvider);
     
     try {
       final newComment = await commentService.postComment(incidentId, text);
+      // Mark as sent BEFORE DB write so the WS echo is suppressed
+      dataSync.markCommentAsSent(newComment.id);
       // Persist locally immediately
       await syncRepo.upsertComments(incidentId, [newComment]);
     } catch (e) {

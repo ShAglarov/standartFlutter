@@ -55,6 +55,23 @@ class DataSyncService {
   // ADDED: Deduplication cache for identical updates
   final Map<String, _EntityCacheEntry> _recentUpdatesData = {};
 
+  // Echo suppression for self-sent comments: when sendComment() in chat_providers
+  // posts a comment and immediately saves it to the local DB, the WebSocket echo
+  // of the same comment would trigger a redundant upsert → Drift stream re-emit
+  // → brief visual duplicate in the chat. This set tracks recently-sent comment
+  // IDs so _handleComment() can skip the echo even if device_id is missing.
+  final Set<int> _recentlySentCommentIds = {};
+
+  /// Register a comment ID as "just sent by this device".
+  /// Called from IncidentChat.sendComment() after the POST succeeds.
+  void markCommentAsSent(int commentId) {
+    _recentlySentCommentIds.add(commentId);
+    // Auto-expire after 30s to prevent unbounded growth
+    Future.delayed(const Duration(seconds: 30), () {
+      _recentlySentCommentIds.remove(commentId);
+    });
+  }
+
   // SERIAL QUEUE for processing incoming events
   // This ensures that if we get 5 fast WebSocket events, they are processed 
   // strictly in order, preventing database race conditions.
@@ -361,6 +378,15 @@ class DataSyncService {
     // returns, we can safely skip the echo.
     if (deviceId != null && deviceId == _myDeviceId) {
       dev.log('[DataSync] Echo suppressed: comment from own device (id=$entityId)', name: 'SYNC');
+      return;
+    }
+
+    // Fallback echo suppression: if sendComment() already saved this comment
+    // to the local DB, skip the WS echo to prevent Drift stream double-emit
+    // (which causes a brief visual duplicate in the chat).
+    final commentId = _parseInt(entityId);
+    if (commentId != null && _recentlySentCommentIds.remove(commentId)) {
+      dev.log('[DataSync] Echo suppressed: recently sent comment id=$commentId', name: 'SYNC');
       return;
     }
 
