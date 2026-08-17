@@ -50,7 +50,7 @@ final class IncidentChatProvider
   }
 }
 
-String _$incidentChatHash() => r'16b347e05783abecc7656ccf1c9cb74ff3022d3f';
+String _$incidentChatHash() => r'e90979c39050a22f8099c16711f781c7f609a298';
 
 final class IncidentChatFamily extends $Family
     with

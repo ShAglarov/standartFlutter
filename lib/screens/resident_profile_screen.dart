@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../providers/auth_providers.dart';
 import '../services/resident_auth_service.dart';
 import '../models/resident_models.dart';
@@ -273,9 +274,9 @@ class _ResidentProfileScreenState extends ConsumerState<ResidentProfileScreen> {
         if (director.isNotEmpty)
           _infoCard(theme, Icons.person_outline, 'Руководитель', director),
 
-        // Phone
+        // Phone (tappable → call dialog)
         if (phone.isNotEmpty)
-          _infoCard(theme, Icons.phone_outlined, 'Телефон УК', phone),
+          _phoneCard(theme, phone),
 
         // Email
         if (email.isNotEmpty)
@@ -466,6 +467,86 @@ class _ResidentProfileScreenState extends ConsumerState<ResidentProfileScreen> {
         ],
       ),
     );
+  }
+
+  /// Карточка телефона УК с возможностью вызова
+  Widget _phoneCard(ThemeData theme, String phone) {
+    return GestureDetector(
+      onTap: () => _showCallDialog(phone),
+      child: Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: theme.colorScheme.onSurface.withAlpha(30)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.phone_outlined, size: 22, color: AppTheme.primaryBlue),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Телефон УК', style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withAlpha(140))),
+                  const SizedBox(height: 2),
+                  Text(
+                    phone,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      color: AppTheme.primaryBlue,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.call, size: 20, color: Colors.green.withAlpha(180)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showCallDialog(String phone) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Позвонить'),
+        content: Text('Набрать номер $phone?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Отмена'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _makePhoneCall(phone);
+            },
+            icon: const Icon(Icons.call, size: 18),
+            label: const Text('Позвонить'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _makePhoneCall(String phone) async {
+    // Clean the phone number — keep only digits and leading +
+    final cleaned = phone.replaceAll(RegExp(r'[^\d+]'), '');
+    final uri = Uri.parse('tel:$cleaned');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    }
   }
 
   Widget _infoCard(ThemeData theme, IconData icon, String label, String value) {
