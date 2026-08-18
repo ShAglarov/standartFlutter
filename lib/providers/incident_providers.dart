@@ -304,7 +304,7 @@ IncidentViewModel _createViewModel(IncidentResponse inc, String? boilerHouseDeta
   return IncidentViewModel(
     raw: inc,
     boilerHouseDetail: boilerHouseDetail,
-    totalResidents: totalResidents,
+    totalResidents: stoppedServicesText != null ? totalResidents : 0,
     assigneeName: assigneeName,
     formattedTimestamp: formattedTimestamp,
     stoppedServicesText: stoppedServicesText,

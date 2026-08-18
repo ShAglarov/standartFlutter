@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'secure_storage_service.dart';
@@ -37,6 +38,9 @@ class AuthInterceptor extends Interceptor {
 
   /// Mutex: if a refresh is already in progress, other 401 handlers wait for it.
   Completer<bool>? _refreshCompleter;
+  
+  /// Флаг: фоновое обновление уже запущено (чтобы не запускать параллельно из onRequest)
+  bool _proactiveRefreshInProgress = false;
 
   AuthInterceptor(this._storageService, this._eventService, this._deviceIdService);
 
@@ -48,6 +52,10 @@ class AuthInterceptor extends Interceptor {
     final token = await _storageService.getAccessToken();
     if (token != null) {
       options.headers['Authorization'] = 'Bearer $token';
+      
+      // Проактивная проверка: если до истечения < 5 минут — запускаем фоновый refresh
+      // Текущий запрос всё равно уйдёт с текущим токеном (он ещё валиден)
+      _checkAndRefreshProactively(token);
     }
 
     final deviceId = await _deviceIdService.getDeviceId();
@@ -128,6 +136,49 @@ class AuthInterceptor extends Interceptor {
       }
     }
     return handler.next(err);
+  }
+
+  /// Проактивно проверяет JWT exp и обновляет токен ДО истечения.
+  /// Запускается в фоне при каждом onRequest — не блокирует текущий запрос.
+  void _checkAndRefreshProactively(String token) {
+    if (_proactiveRefreshInProgress) return;
+    if (_refreshCompleter != null) return; // Уже идёт реактивный refresh
+
+    final expiresAt = _getTokenExpiration(token);
+    if (expiresAt == null) return;
+
+    final now = DateTime.now().toUtc();
+    final timeLeft = expiresAt.difference(now);
+
+    // Если до истечения < 5 минут — обновляем в фоне
+    if (timeLeft.inMinutes < 5) {
+      _proactiveRefreshInProgress = true;
+      print('🔄 [AuthInterceptor] Token expires in ${timeLeft.inMinutes}m ${timeLeft.inSeconds % 60}s — proactive refresh');
+      _tryRefreshToken().then((_) {
+        _proactiveRefreshInProgress = false;
+      });
+    }
+  }
+
+  /// Декодирует JWT и возвращает DateTime из exp claim
+  DateTime? _getTokenExpiration(String token) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return null;
+      String payload = parts[1];
+      // Добавляем padding для base64
+      switch (payload.length % 4) {
+        case 2: payload += '=='; break;
+        case 3: payload += '='; break;
+      }
+      final decoded = utf8.decode(base64Url.decode(payload));
+      final json = jsonDecode(decoded) as Map<String, dynamic>;
+      final exp = json['exp'] as int?;
+      if (exp == null) return null;
+      return DateTime.fromMillisecondsSinceEpoch(exp * 1000, isUtc: true);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Attempts to refresh the access token using the stored refresh token.

@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'base_api_service.dart';
+import 'secure_storage_service.dart';
 
 /// Модель непрочитанных комментариев для инцидента
 class UnreadCountItem {
@@ -47,6 +48,10 @@ class UnreadCountsNotifier extends Notifier<Map<int, int>> {
   /// Загрузить все счётчики с сервера
   Future<void> fetchAll() async {
     try {
+      // /chat/unread-counts — staff-only endpoint, жильцам не доступен
+      final storage = ref.read(secureStorageServiceProvider);
+      if (await storage.isResidentToken()) return;
+
       final service = ref.read(chatReadServiceProvider);
       final items = await service.getUnreadCounts();
       
@@ -65,6 +70,10 @@ class UnreadCountsNotifier extends Notifier<Map<int, int>> {
   
   /// Пометить инцидент как прочитанный
   Future<void> markAsRead(int incidentId) async {
+    // Staff-only endpoint — жильцам не доступен
+    final storage = ref.read(secureStorageServiceProvider);
+    if (await storage.isResidentToken()) return;
+
     // Оптимистичное обновление UI
     final newState = Map<int, int>.from(state);
     newState.remove(incidentId);

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:async';
 import '../services/resident_auth_service.dart';
 import '../services/realtime_service.dart';
+import '../services/token_refresh_service.dart';
 import '../models/resident_models.dart';
 import '../models/incident_models.dart';
 import '../utils/app_theme.dart';
@@ -59,6 +60,9 @@ class _ResidentHomeScreenState extends ConsumerState<ResidentHomeScreen>
     WidgetsBinding.instance.addObserver(this);
     _loadProfile();
 
+    // Запускаем проактивное обновление токена
+    ref.read(tokenRefreshServiceProvider).start();
+
     // КРИТИЧНО: Подключаем WebSocket при старте приложения.
     ref.read(realtimeServiceProvider).connect();
 
@@ -80,6 +84,7 @@ class _ResidentHomeScreenState extends ConsumerState<ResidentHomeScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _wsSub?.cancel();
+    ref.read(tokenRefreshServiceProvider).stop();
     super.dispose();
   }
 

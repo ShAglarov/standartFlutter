@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:convert';
 import '../utils/constants.dart';
 
 const String _deviceIdKey = 'device_unique_id';
@@ -90,5 +91,33 @@ class SecureStorageService {
 
   Future<String?> getDeviceId() async {
     return await _safeRead(_deviceIdKey);
+  }
+
+  /// Проверяет, является ли текущий токен резидентским (жильца).
+  /// JWT sub='resident:<id>' — жилец, sub=<number> — сотрудник.
+  Future<bool> isResidentToken() async {
+    final token = await getAccessToken();
+    if (token == null) {
+      print('ℹ️ [Storage] isResidentToken: no token');
+      return false;
+    }
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return false;
+      String payload = parts[1];
+      switch (payload.length % 4) {
+        case 2: payload += '=='; break;
+        case 3: payload += '='; break;
+      }
+      final decoded = utf8.decode(base64Url.decode(payload));
+      final json = jsonDecode(decoded) as Map<String, dynamic>;
+      final sub = json['sub'];
+      final isResident = sub != null && sub.toString().startsWith('resident:');
+      print('ℹ️ [Storage] isResidentToken: sub=$sub (${sub.runtimeType}), isResident=$isResident');
+      return isResident;
+    } catch (e) {
+      print('⚠️ [Storage] isResidentToken error: $e');
+      return false;
+    }
   }
 }

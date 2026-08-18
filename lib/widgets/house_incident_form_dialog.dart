@@ -527,21 +527,25 @@ class _HouseIncidentFormDialogState extends ConsumerState<HouseIncidentFormDialo
       'Предписание надзорного органа',
       'Стихийное бедствие',
       // Всегда последним
-      'Иное',
+      'Свой вариант',
     ];
+
+    // Если текущий тип не в списке стандартных — это кастомный
+    final isCurrentCustom = state.title.isNotEmpty &&
+        !incidentTypes.where((t) => t != 'Свой вариант').contains(state.title);
 
     showModalBottomSheet(
       context: context,
       backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
+      builder: (ctx) {
         return SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Padding(
                 padding: EdgeInsets.all(16.0),
-                child: Text('Тип', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 16, fontWeight: FontWeight.bold)),
+                child: Text('Тип инцидента', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 16, fontWeight: FontWeight.bold)),
               ),
               Expanded(
                 child: ListView.builder(
@@ -549,16 +553,37 @@ class _HouseIncidentFormDialogState extends ConsumerState<HouseIncidentFormDialo
                   itemCount: incidentTypes.length,
                   itemBuilder: (context, index) {
                     final type = incidentTypes[index];
-                    final isSelected = state.title == type || (state.title.isEmpty && type == 'Иное');
+                    final bool isSelected;
+                    if (type == 'Свой вариант') {
+                      isSelected = isCurrentCustom;
+                    } else {
+                      isSelected = state.title == type && !isCurrentCustom;
+                    }
+
                     return ListTile(
                       title: Text(
-                        type,
-                        style: TextStyle(color: isSelected ? AppTheme.primaryBlue : Theme.of(context).colorScheme.onSurface),
+                        type == 'Свой вариант' && isCurrentCustom
+                            ? 'Свой вариант: ${state.title}'
+                            : type,
+                        style: TextStyle(
+                          color: isSelected
+                              ? AppTheme.primaryBlue
+                              : type == 'Свой вариант'
+                                  ? AppTheme.primaryBlue
+                                  : Theme.of(context).colorScheme.onSurface,
+                          fontWeight: type == 'Свой вариант' ? FontWeight.w600 : FontWeight.normal,
+                        ),
                         textAlign: TextAlign.center,
                       ),
+                      trailing: isSelected ? Icon(Icons.check, color: AppTheme.primaryBlue, size: 20) : null,
                       onTap: () {
-                        controller.updateTitle(type);
-                        Navigator.pop(context);
+                        if (type == 'Свой вариант') {
+                          Navigator.pop(context);
+                          _showCustomTypeInput(context, state, controller);
+                        } else {
+                          controller.updateTitle(type);
+                          Navigator.pop(context);
+                        }
                       },
                     );
                   },
@@ -566,6 +591,43 @@ class _HouseIncidentFormDialogState extends ConsumerState<HouseIncidentFormDialo
               ),
             ],
           ),
+        );
+      },
+    );
+  }
+
+  void _showCustomTypeInput(BuildContext context, IncidentFormState state, IncidentFormController controller) {
+    final textController = TextEditingController(text: state.title.isNotEmpty ? state.title : '');
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Свой вариант'),
+          content: TextField(
+            controller: textController,
+            autofocus: true,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              hintText: 'Введите тип инцидента',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Отмена'),
+            ),
+            TextButton(
+              onPressed: () {
+                final text = textController.text.trim();
+                if (text.isNotEmpty) {
+                  controller.updateTitle(text);
+                }
+                Navigator.pop(ctx);
+              },
+              child: const Text('Готово'),
+            ),
+          ],
         );
       },
     );

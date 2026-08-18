@@ -9,6 +9,7 @@ import '../repositories/sync_repository.dart';
 import '../services/boiler_house_service.dart';
 import '../services/location_service.dart';
 import '../services/incident_service.dart';
+import '../services/secure_storage_service.dart';
 
 part 'map_providers.g.dart';
 
@@ -211,6 +212,14 @@ class MapData extends _$MapData {
       return;
     }
     if (_disposed) return;
+    
+    // Staff-only API — жильцам не доступны
+    final storage = ref.read(secureStorageServiceProvider);
+    if (await storage.isResidentToken()) {
+      print('ℹ️ [MapData] Resident token — skipping staff-only API fetch');
+      return;
+    }
+    
     _isFetching = true;
 
     try {
