@@ -8,8 +8,6 @@ import '../services/incident_service.dart';
 import '../services/permission_service.dart';
 import '../repositories/sync_repository.dart';
 import '../widgets/incident_detail/incident_header_card.dart';
-import '../widgets/incident_detail/boiler_house_info_card.dart';
-import '../widgets/incident_detail/affected_houses_card.dart';
 import '../widgets/incident_detail/incident_description_card.dart';
 import '../widgets/incident_detail/incident_chat_card.dart';
 import '../widgets/incident_detail/incident_activity_card.dart';
@@ -155,20 +153,10 @@ class _IncidentDetailScreenState extends ConsumerState<IncidentDetailScreen> {
                   },
                 ),
                 const SizedBox(height: 16),
-                if (incident.boilerHouse != null) ...[
-                  BoilerHouseInfoCard(boilerHouse: incident.boilerHouse!),
-                  const SizedBox(height: 16),
-                ],
-                if (incident.affectedHouseIds != null) ...[
-                  AffectedHousesCard(
-                    houseIds: incident.affectedHouseIds!,
-                    houseDetails: incident.affectedHouseDetails,
-                    onShowAll: () {
-                      // TODO: Show list of affected houses
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                ],
+                // BoilerHouseInfoCard скрыт по требованию УК
+
+                // AffectedHousesCard скрыт по требованию УК
+
                 if (incident.description != null) ...[
                   IncidentDescriptionCard(description: incident.description!),
                   const SizedBox(height: 16),

@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:async';
 import '../models/incident_models.dart';
 import '../services/resident_auth_service.dart';
 import '../services/realtime_service.dart';
 import '../providers/incident_providers.dart';
-import '../widgets/incident_detail/boiler_house_info_card.dart';
-import '../widgets/incident_detail/affected_houses_card.dart';
+// boiler_house_info_card and affected_houses_card hidden from resident view
 import '../widgets/incident_detail/incident_description_card.dart';
 import '../widgets/resident_chat_card.dart';
 import '../utils/constants.dart';
@@ -138,20 +138,8 @@ class _ResidentIncidentDetailScreenState
                             _ResidentIncidentHeader(incident: _incident!),
                             const SizedBox(height: 16),
 
-                            if (_incident!.boilerHouse != null) ...[
-                              BoilerHouseInfoCard(
-                                  boilerHouse: _incident!.boilerHouse!),
-                              const SizedBox(height: 16),
-                            ],
-
-                            if (_incident!.affectedHouseIds != null) ...[
-                              AffectedHousesCard(
-                                houseIds: _incident!.affectedHouseIds!,
-                                houseDetails: _incident!.affectedHouseDetails,
-                                onShowAll: () {},
-                              ),
-                              const SizedBox(height: 16),
-                            ],
+                            // BoilerHouseInfoCard hidden from resident view
+                            // AffectedHousesCard hidden from resident view
 
                             if (_incident!.description != null &&
                                 _incident!.description!.trim().isNotEmpty) ...[
@@ -222,10 +210,8 @@ class _ResidentIncidentHeader extends StatelessWidget {
       statusText = 'АКТИВЕН';
     }
 
-    // Ресурсы
+    // Ресурсы — ГВС/Отопление скрыты от жильца
     final stoppedServices = <String>[];
-    if (incident.resourceHotWaterStopped == 1) stoppedServices.add('🚿 ГВС');
-    if (incident.resourceHeatingStopped == 1) stoppedServices.add('🔥 Отопление');
 
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -266,12 +252,25 @@ class _ResidentIncidentHeader extends StatelessWidget {
             const SizedBox(height: 12),
 
             // Title
-            Text(
-              incident.title ?? 'Инцидент №${incident.id}',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: theme.colorScheme.onSurface,
+            GestureDetector(
+              onLongPress: () {
+                final title = incident.title ?? 'Инцидент №${incident.id}';
+                Clipboard.setData(ClipboardData(text: title));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Заголовок скопирован'),
+                    duration: Duration(seconds: 2),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
+              child: Text(
+                incident.title ?? 'Инцидент №${incident.id}',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.onSurface,
+                ),
               ),
             ),
 

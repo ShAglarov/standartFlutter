@@ -91,7 +91,7 @@ class _IncidentFormScreenState extends ConsumerState<IncidentFormScreen> {
                       value: state.boilerHouseId,
                       isExpanded: true,
                       dropdownColor: Theme.of(context).colorScheme.surface,
-                      decoration: _inputDecoration('Котельная'),
+                      decoration: _inputDecoration('Организация'),
                       items: mapData.boilerHouses.map((bh) {
                         return DropdownMenuItem(
                           value: bh.id,
@@ -103,7 +103,7 @@ class _IncidentFormScreenState extends ConsumerState<IncidentFormScreen> {
                         // Сбрасываем локальный счётчик котлов при смене котельной
                         setState(() => _localBoilerCount = 1);
                       },
-                      validator: (v) => v == null ? 'Выберите котельную' : null,
+                      validator: (v) => v == null ? 'Выберите организацию' : null,
                     ),
                     const SizedBox(height: 16),
                     Row(

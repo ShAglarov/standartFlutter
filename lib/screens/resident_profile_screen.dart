@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../providers/auth_providers.dart';
@@ -401,26 +402,33 @@ class _ResidentProfileScreenState extends ConsumerState<ResidentProfileScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Account number (highlighted)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.teal.withAlpha(20),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.tag, size: 16, color: Colors.teal),
-                const SizedBox(width: 6),
-                Text(
-                  accountNumber.isNotEmpty ? accountNumber : '—',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.teal,
+          GestureDetector(
+            onLongPress: accountNumber.isNotEmpty ? () => _copyToClipboard(accountNumber) : null,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.teal.withAlpha(20),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.tag, size: 16, color: Colors.teal),
+                  const SizedBox(width: 6),
+                  Text(
+                    accountNumber.isNotEmpty ? accountNumber : '—',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.teal,
+                    ),
                   ),
-                ),
-              ],
+                  if (accountNumber.isNotEmpty) ...[
+                    const SizedBox(width: 6),
+                    Icon(Icons.copy, size: 13, color: Colors.teal.withAlpha(140)),
+                  ],
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 12),
@@ -447,24 +455,28 @@ class _ResidentProfileScreenState extends ConsumerState<ResidentProfileScreen> {
   }
 
   Widget _accountRow(IconData icon, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 18, color: Colors.teal.withAlpha(180)),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label, style: TextStyle(fontSize: 11, color: Colors.grey[500])),
-                const SizedBox(height: 1),
-                Text(value, style: const TextStyle(fontSize: 14)),
-              ],
+    return GestureDetector(
+      onLongPress: () => _copyToClipboard(value),
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 18, color: Colors.teal.withAlpha(180)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+                  const SizedBox(height: 1),
+                  Text(value, style: const TextStyle(fontSize: 14)),
+                ],
+              ),
             ),
-          ),
-        ],
+            Icon(Icons.copy, size: 14, color: Colors.grey[400]),
+          ],
+        ),
       ),
     );
   }
@@ -473,6 +485,7 @@ class _ResidentProfileScreenState extends ConsumerState<ResidentProfileScreen> {
   Widget _phoneCard(ThemeData theme, String phone) {
     return GestureDetector(
       onTap: () => _showCallDialog(phone),
+      onLongPress: () => _copyToClipboard(phone),
       child: Container(
         width: double.infinity,
         margin: const EdgeInsets.only(bottom: 12),
@@ -550,30 +563,45 @@ class _ResidentProfileScreenState extends ConsumerState<ResidentProfileScreen> {
   }
 
   Widget _infoCard(ThemeData theme, IconData icon, String label, String value) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.colorScheme.onSurface.withAlpha(30)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 22, color: AppTheme.primaryBlue),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label, style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withAlpha(140))),
-                const SizedBox(height: 2),
-                Text(value, style: TextStyle(fontSize: 15, color: theme.colorScheme.onSurface)),
-              ],
+    return GestureDetector(
+      onLongPress: () => _copyToClipboard(value),
+      child: Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: theme.colorScheme.onSurface.withAlpha(30)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 22, color: AppTheme.primaryBlue),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withAlpha(140))),
+                  const SizedBox(height: 2),
+                  Text(value, style: TextStyle(fontSize: 15, color: theme.colorScheme.onSurface)),
+                ],
+              ),
             ),
-          ),
-        ],
+            Icon(Icons.copy, size: 16, color: theme.colorScheme.onSurface.withAlpha(60)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _copyToClipboard(String text) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Скопировано: $text'),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }

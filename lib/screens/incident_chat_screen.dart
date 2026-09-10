@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_provider.dart';
 import '../providers/chat_providers.dart';
@@ -315,59 +316,71 @@ class _IncidentChatScreenState extends ConsumerState<IncidentChatScreen> {
             const SizedBox(width: 6),
           ],
           Flexible(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: bubbleColor,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(18),
-                  topRight: const Radius.circular(18),
-                  bottomLeft: Radius.circular(isMine ? 18 : 4),
-                  bottomRight: Radius.circular(isMine ? 4 : 18),
-                ),
-                boxShadow: isDark ? null : [
-                  BoxShadow(
-                    color: Colors.black.withAlpha(8),
-                    blurRadius: 4,
-                    offset: const Offset(0, 1),
+            child: GestureDetector(
+              onLongPress: () {
+                Clipboard.setData(ClipboardData(text: comment.text));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Сообщение скопировано'),
+                    duration: Duration(seconds: 2),
+                    behavior: SnackBarBehavior.floating,
                   ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (!isMine && showAvatar)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 2),
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: bubbleColor,
+                  borderRadius: BorderRadius.only(
+                    topLeft: const Radius.circular(18),
+                    topRight: const Radius.circular(18),
+                    bottomLeft: Radius.circular(isMine ? 18 : 4),
+                    bottomRight: Radius.circular(isMine ? 4 : 18),
+                  ),
+                  boxShadow: isDark ? null : [
+                    BoxShadow(
+                      color: Colors.black.withAlpha(8),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (!isMine && showAvatar)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: Text(
+                          comment.author?.formattedDisplayName ?? 'Система',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: nameColor,
+                          ),
+                        ),
+                      ),
+                    Text(
+                      comment.text,
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: textColor,
+                        height: 1.3,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Align(
+                      alignment: Alignment.bottomRight,
                       child: Text(
-                        comment.author?.formattedDisplayName ?? 'Система',
+                        _formatTime(comment.createdAt),
                         style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: nameColor,
+                          fontSize: 11,
+                          color: timeColor,
                         ),
                       ),
                     ),
-                  Text(
-                    comment.text,
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: textColor,
-                      height: 1.3,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Align(
-                    alignment: Alignment.bottomRight,
-                    child: Text(
-                      _formatTime(comment.createdAt),
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: timeColor,
-                      ),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

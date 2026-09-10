@@ -22,7 +22,6 @@ final residentProfileProvider = NotifierProvider<ResidentProfileNotifier, Reside
 );
 
 /// Счётчик для принудительного обновления residentIncidentsProvider.
-/// Инкрементируется при получении WS-обновления entity_type == 'incident'.
 class _ResidentRefreshNotifier extends Notifier<int> {
   @override
   int build() => 0;
@@ -34,13 +33,14 @@ final _residentRefreshTrigger = NotifierProvider<_ResidentRefreshNotifier, int>(
 );
 
 /// Провайдер для загрузки инцидентов жильца.
+/// Бекенд возвращает все инциденты (активные + завершённые),
+/// фильтрация по статусу происходит на стороне UI (табы).
 final residentIncidentsProvider = FutureProvider<List<IncidentResponse>>((ref) async {
-  // Зависимость от счётчика: каждый инкремент вызывает перезагрузку.
   ref.watch(_residentRefreshTrigger);
-
   final authService = ref.watch(residentAuthServiceProvider);
-  final rawIncidents = await authService.getMyIncidents();
-  return rawIncidents.map((json) => IncidentResponse.fromJson(json)).toList();
+
+  final rawList = await authService.getMyIncidents();
+  return rawList.map((json) => IncidentResponse.fromJson(json)).toList();
 });
 
 class ResidentHomeScreen extends ConsumerStatefulWidget {
@@ -51,30 +51,26 @@ class ResidentHomeScreen extends ConsumerStatefulWidget {
 }
 
 class _ResidentHomeScreenState extends ConsumerState<ResidentHomeScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   StreamSubscription<Map<String, dynamic>>? _wsSub;
+  late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     WidgetsBinding.instance.addObserver(this);
     _loadProfile();
 
-    // Запускаем проактивное обновление токена
     ref.read(tokenRefreshServiceProvider).start();
-
-    // КРИТИЧНО: Подключаем WebSocket при старте приложения.
     ref.read(realtimeServiceProvider).connect();
 
-    // Слушаем WS-сообщения: при обновлении инцидента инкрементируем счётчик,
-    // что вызывает перезагрузку residentIncidentsProvider.
     final realtime = ref.read(realtimeServiceProvider);
     _wsSub = realtime.messages.listen((msg) {
       final data = msg['data'] as Map<String, dynamic>?;
       if (data == null) return;
       final entityType = data['entity_type'] ?? msg['entity_type'];
       if (entityType == 'incident') {
-        print('🎯 [ResidentHome] WS incident update → refreshing list');
         ref.read(_residentRefreshTrigger.notifier).increment();
       }
     });
@@ -82,18 +78,16 @@ class _ResidentHomeScreenState extends ConsumerState<ResidentHomeScreen>
 
   @override
   void dispose() {
+    _tabController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _wsSub?.cancel();
     ref.read(tokenRefreshServiceProvider).stop();
     super.dispose();
   }
 
-  /// При возвращении из фона — переподключаем WS и обновляем инциденты,
-  /// чтобы отобразить изменения статусов, произошедшие пока приложение было свёрнуто.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      debugPrint('🔄 [ResidentHome] App resumed → reconnecting WS + refreshing incidents');
       ref.read(realtimeServiceProvider).reconnectNow();
       ref.invalidate(residentIncidentsProvider);
       _loadProfile();
@@ -105,9 +99,7 @@ class _ResidentHomeScreenState extends ConsumerState<ResidentHomeScreen>
       final authService = ref.read(residentAuthServiceProvider);
       final profile = await authService.getMyProfile();
       ref.read(residentProfileProvider.notifier).set(profile);
-    } catch (e) {
-      print('⚠️ [ResidentHome] Failed to load profile: $e');
-    }
+    } catch (_) {}
   }
 
   @override
@@ -121,41 +113,95 @@ class _ResidentHomeScreenState extends ConsumerState<ResidentHomeScreen>
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Мой дом', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text('Мой дом',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             if (profile != null)
               Text(
                 profile.displayAddress,
-                style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withAlpha(180)),
+                style: TextStyle(
+                    fontSize: 12,
+                    color: theme.colorScheme.onSurface.withAlpha(180)),
               ),
           ],
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.person_outline),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ResidentProfileScreen()),
-              );
-            },
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ResidentProfileScreen()),
+            ),
           ),
         ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          ref.invalidate(residentIncidentsProvider);
-          await _loadProfile();
-        },
-        child: incidentsAsync.when(
-          data: (incidents) => _buildIncidentList(incidents, theme),
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (err, stack) => _buildError(err, theme),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'Активные'),
+            Tab(text: 'Завершённые'),
+          ],
+          labelStyle:
+              const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          unselectedLabelStyle: const TextStyle(fontSize: 14),
+          indicatorColor: AppTheme.primaryBlue,
+          labelColor: AppTheme.primaryBlue,
+          unselectedLabelColor: Colors.grey,
         ),
+      ),
+      body: incidentsAsync.when(
+        data: (incidents) {
+          final active = incidents
+              .where((inc) =>
+                  inc.status != IncidentStatus.resolved &&
+                  inc.status != IncidentStatus.closed)
+              .toList();
+          final completed = incidents
+              .where((inc) =>
+                  inc.status == IncidentStatus.resolved ||
+                  inc.status == IncidentStatus.closed)
+              .toList();
+
+          return RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(residentIncidentsProvider);
+              await _loadProfile();
+            },
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _buildList(
+                  active,
+                  theme,
+                  emptyIcon: Icons.check_circle_outline,
+                  emptyIconColor: Colors.green,
+                  emptyMessage: 'Нет активных инцидентов',
+                  emptySubtitle: 'Всё работает в штатном режиме',
+                ),
+                _buildList(
+                  completed,
+                  theme,
+                  emptyIcon: Icons.history,
+                  emptyIconColor: Colors.grey,
+                  emptyMessage: 'Нет завершённых инцидентов',
+                  emptySubtitle: 'Завершённые инциденты появятся здесь',
+                ),
+              ],
+            ),
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (err, _) => _buildError(err, theme),
       ),
     );
   }
 
-  Widget _buildIncidentList(List<IncidentResponse> incidents, ThemeData theme) {
+  Widget _buildList(
+    List<IncidentResponse> incidents,
+    ThemeData theme, {
+    required IconData emptyIcon,
+    required Color emptyIconColor,
+    required String emptyMessage,
+    required String emptySubtitle,
+  }) {
     if (incidents.isEmpty) {
       return ListView(
         children: [
@@ -163,24 +209,18 @@ class _ResidentHomeScreenState extends ConsumerState<ResidentHomeScreen>
           Center(
             child: Column(
               children: [
-                Icon(Icons.check_circle_outline, size: 80, color: Colors.green.withAlpha(120)),
+                Icon(emptyIcon, size: 80, color: emptyIconColor.withAlpha(120)),
                 const SizedBox(height: 16),
-                Text(
-                  'Нет активных инцидентов',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.onSurface.withAlpha(180),
-                  ),
-                ),
+                Text(emptyMessage,
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: theme.colorScheme.onSurface.withAlpha(180))),
                 const SizedBox(height: 8),
-                Text(
-                  'Всё работает в штатном режиме',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: theme.colorScheme.onSurface.withAlpha(120),
-                  ),
-                ),
+                Text(emptySubtitle,
+                    style: TextStyle(
+                        fontSize: 14,
+                        color: theme.colorScheme.onSurface.withAlpha(120))),
               ],
             ),
           ),
@@ -195,14 +235,13 @@ class _ResidentHomeScreenState extends ConsumerState<ResidentHomeScreen>
         final inc = incidents[index];
         return _ResidentIncidentCard(
           incident: inc,
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => ResidentIncidentDetailScreen(incidentId: inc.id),
-              ),
-            );
-          },
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) =>
+                  ResidentIncidentDetailScreen(incidentId: inc.id),
+            ),
+          ),
         );
       },
     );
@@ -241,9 +280,10 @@ class _ResidentIncidentCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isResolved = incident.status == IncidentStatus.resolved || incident.status == IncidentStatus.closed;
+    final isResolved = incident.status == IncidentStatus.resolved ||
+        incident.status == IncidentStatus.closed;
     final isScheduled = incident.isScheduledLocal;
-    
+
     final Color statusColor;
     final String statusText;
     if (isScheduled) {
@@ -257,10 +297,7 @@ class _ResidentIncidentCard extends StatelessWidget {
       statusText = 'АКТИВЕН';
     }
 
-    // Ресурсы
-    final stoppedServices = <String>[];
-    if (incident.resourceHotWaterStopped == 1) stoppedServices.add('🚿 ГВС');
-    if (incident.resourceHeatingStopped == 1) stoppedServices.add('🔥 Отопление');
+    // ГВС / Отопление скрыты от жильца
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -278,7 +315,8 @@ class _ResidentIncidentCard extends StatelessWidget {
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: statusColor.withAlpha(40),
                       borderRadius: BorderRadius.circular(8),
@@ -286,10 +324,9 @@ class _ResidentIncidentCard extends StatelessWidget {
                     child: Text(
                       statusText,
                       style: TextStyle(
-                        color: statusColor,
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                      ),
+                          color: statusColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold),
                     ),
                   ),
                   const Spacer(),
@@ -297,9 +334,8 @@ class _ResidentIncidentCard extends StatelessWidget {
                     Text(
                       _formatDate(incident.createdAt!),
                       style: TextStyle(
-                        fontSize: 12,
-                        color: theme.colorScheme.onSurface.withAlpha(140),
-                      ),
+                          fontSize: 12,
+                          color: theme.colorScheme.onSurface.withAlpha(140)),
                     ),
                 ],
               ),
@@ -309,23 +345,26 @@ class _ResidentIncidentCard extends StatelessWidget {
               Text(
                 incident.title ?? 'Инцидент №${incident.id}',
                 style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: theme.colorScheme.onSurface,
-                ),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.onSurface),
               ),
 
-              // Boiler house
+              // Organisation (boiler house address)
               if (incident.boilerHouse?.address != null) ...[
                 const SizedBox(height: 6),
                 Row(
                   children: [
-                    Icon(Icons.location_on_outlined, size: 16, color: theme.colorScheme.onSurface.withAlpha(140)),
+                    Icon(Icons.location_on_outlined,
+                        size: 16,
+                        color: theme.colorScheme.onSurface.withAlpha(140)),
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(
-                        'Котельная: ${incident.boilerHouse!.address}',
-                        style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withAlpha(180)),
+                        'Организация: ${incident.boilerHouse!.address}',
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: theme.colorScheme.onSurface.withAlpha(180)),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -334,33 +373,17 @@ class _ResidentIncidentCard extends StatelessWidget {
                 ),
               ],
 
-              // Stopped services
-              if (stoppedServices.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  children: stoppedServices.map((s) => Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withAlpha(25),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(s, style: const TextStyle(fontSize: 12, color: Colors.red)),
-                  )).toList(),
-                ),
-              ],
-
               // Description preview
-              if (incident.description != null && incident.description!.trim().isNotEmpty) ...[
+              if (incident.description != null &&
+                  incident.description!.trim().isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Text(
                   incident.description!,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 13,
-                    color: theme.colorScheme.onSurface.withAlpha(160),
-                  ),
+                      fontSize: 13,
+                      color: theme.colorScheme.onSurface.withAlpha(160)),
                 ),
               ],
             ],
@@ -375,11 +398,9 @@ class _ResidentIncidentCard extends StatelessWidget {
       final dt = DateTime.parse(isoDate).toLocal();
       final now = DateTime.now();
       final diff = now.difference(dt);
-
       if (diff.inMinutes < 60) return '${diff.inMinutes} мин назад';
       if (diff.inHours < 24) return '${diff.inHours} ч назад';
       if (diff.inDays < 7) return '${diff.inDays} дн назад';
-
       return '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}';
     } catch (_) {
       return isoDate;

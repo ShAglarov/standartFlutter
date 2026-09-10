@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../utils/app_theme.dart';
-import 'base_card.dart';
 
 class IncidentCard extends StatefulWidget {
   final String title;
@@ -278,15 +277,8 @@ class _IncidentCardState extends State<IncidentCard> with TickerProviderStateMix
                           text: widget.broadcastText!,
                         ),
                       ],
-                      if (widget.stoppedServicesText != null) ...[
-                                              Divider(height: 1, color: Theme.of(context).colorScheme.onSurface.withAlpha(25)),
-                        _buildActionRow(
-                          context,
-                          icon: Icons.warning_rounded,
-                          iconColor: AppTheme.warningOrange,
-                          text: 'Остановлено: ${widget.stoppedServicesText}',
-                        ),
-                      ],
+                      // Остановлено ГВС/Отопление скрыто по требованию УК
+
                       // ─── ЧИПЫ КОТЛОВ ───
                       _buildBoilerChipsRow(context),
                       if (widget.affectedPopulationCount > 0) ...[

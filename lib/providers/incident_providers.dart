@@ -173,10 +173,8 @@ final incidentViewModelsProvider = Provider<AsyncValue<List<IncidentViewModel>>>
     return incidents.map((inc) {
       String? boilerHouseDetail;
       if (inc.boilerHouse != null) {
-        final address = inc.boilerHouse!.address ?? 'Неизвестно';
-        final manager = inc.boilerHouse!.siteManager ?? '?';
-        final site = inc.boilerHouse!.siteNumber ?? '?';
-        boilerHouseDetail = '📍 Котельная: $address\nНач: $manager | Участок: $site';
+        final address = inc.boilerHouse!.address;
+        boilerHouseDetail = '📍 $address';
       }
       return _createViewModel(inc, boilerHouseDetail, usersMap);
     }).toList();

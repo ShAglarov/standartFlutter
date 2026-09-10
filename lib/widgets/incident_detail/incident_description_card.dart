@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../base_card.dart';
 
 class IncidentDescriptionCard extends StatelessWidget {
@@ -8,6 +9,8 @@ class IncidentDescriptionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final text = description != null && description!.isNotEmpty ? description! : null;
+
     return BaseCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -28,15 +31,33 @@ class IncidentDescriptionCard extends StatelessWidget {
                   color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
+              if (text != null) ...[ 
+                const Spacer(),
+                Icon(Icons.copy, size: 14, color: Theme.of(context).colorScheme.onSurface.withAlpha(80)),
+              ],
             ],
           ),
           const SizedBox(height: 16),
-          Text(
-            description != null && description!.isNotEmpty ? description! : 'Нет описания',
-            style: TextStyle(
-              fontSize: 16,
-              color: Theme.of(context).colorScheme.onSurface,
-              height: 1.4,
+          GestureDetector(
+            onLongPress: text != null
+                ? () {
+                    Clipboard.setData(ClipboardData(text: text));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Описание скопировано'),
+                        duration: Duration(seconds: 2),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                : null,
+            child: Text(
+              text ?? 'Нет описания',
+              style: TextStyle(
+                fontSize: 16,
+                color: Theme.of(context).colorScheme.onSurface,
+                height: 1.4,
+              ),
             ),
           ),
         ],

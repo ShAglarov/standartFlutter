@@ -88,13 +88,6 @@ class IncidentHeaderCard extends ConsumerWidget {
       }
     }
 
-    String stoppedResources = '';
-    List<String> stopped = [];
-    if (incident.resourceHotWaterStopped == 1) stopped.add('ГВС');
-    if (incident.resourceHeatingStopped == 1) stopped.add('Отопление');
-    if (stopped.isNotEmpty) {
-      stoppedResources = stopped.join(', ');
-    }
 
     return BaseCard(
       child: Stack(
@@ -174,14 +167,7 @@ class IncidentHeaderCard extends ConsumerWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  incident.boilerHouse?.address ?? 'Адрес не указан',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Theme.of(context).colorScheme.onSurface.withAlpha(153),
-                  ),
-                ),
+                // Адрес котельной скрыт по требованию УК
                 const SizedBox(height: 16),
                 Divider(color: Theme.of(context).colorScheme.onSurface.withAlpha(25), height: 1),
                 const SizedBox(height: 16),
@@ -227,23 +213,7 @@ class IncidentHeaderCard extends ConsumerWidget {
                     ),
                   ],
                 ),
-                if (stoppedResources.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Divider(color: Theme.of(context).colorScheme.onSurface.withAlpha(25), height: 1),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      const Icon(Icons.warning_amber_rounded, size: 20, color: Colors.orange),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Остановлено: $stoppedResources',
-                          style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+                // Остановлено ГВС/Отопление скрыто по требованию УК
                 // Информация о неработающих котлах
                 Builder(builder: (context) {
                   String? boilersInfo;

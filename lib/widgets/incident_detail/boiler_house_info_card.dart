@@ -34,7 +34,7 @@ class BoilerHouseInfoCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Информация о котельной',
+                  'Организация',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
@@ -42,11 +42,7 @@ class BoilerHouseInfoCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 16),
-                _buildInfoRow(context, 'Котельная', boilerHouse?.address ?? '—'),
-                Divider(color: Theme.of(context).colorScheme.onSurface.withAlpha(25)),
-                _buildInfoRow(context, 'Номер участка', boilerHouse?.siteNumber ?? '—'),
-                Divider(color: Theme.of(context).colorScheme.onSurface.withAlpha(25)),
-                _buildInfoRow(context, 'Начальник участка', boilerHouse?.siteManager ?? '—'),
+                _buildInfoRow(context, 'Организация', boilerHouse?.address ?? '—'),
               ],
             ),
           ),

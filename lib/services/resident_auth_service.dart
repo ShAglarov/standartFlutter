@@ -61,9 +61,11 @@ class ResidentAuthService {
     return ResidentResponse.fromJson(response.data);
   }
 
-  /// Получение инцидентов по адресу жильца
+  /// Получение инцидентов по адресу жильца (все статусы).
   Future<List<Map<String, dynamic>>> getMyIncidents() async {
-    final response = await _dio.get(AppConstants.residentIncidents);
+    final response = await _dio.get(
+      AppConstants.residentIncidents,
+    );
     return (response.data as List).cast<Map<String, dynamic>>();
   }
 
