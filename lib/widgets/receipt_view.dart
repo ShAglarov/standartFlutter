@@ -9,6 +9,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../services/file_export_helper.dart';
+import '../utils/cp1251.dart';
 
 /// Чек об оплате — диалог и PDF.
 ///
@@ -460,61 +461,61 @@ class ReceiptView {
     }
   }
 
-  /// QR-виджет из CP1251-байтов, с запасом на строку.
+  /// Байты для QR: от бэкенда или своим кодированием CP1251.
   ///
-  /// Байты передаются в генератор НАПРЯМУЮ (`QrCode.fromUint8List`):
-  /// `QrImageView(data: ...)` прогнал бы строку через `utf8.encode`, и
-  /// в коде оказались бы UTF-8 байты вместо объявленных в ST00011.
+  /// ПУТИ UTF-8 ЗДЕСЬ НЕТ — ЭТО НАМЕРЕННО.
+  ///     `QrImageView(data: строка)` прогоняет её через `utf8.encode`,
+  ///     и в код попадают UTF-8 байты вопреки маркеру ST00011. Банк
+  ///     читает байты и показывает каракули («Р”Р°РіРµСЃС‚Р°РЅ»).
+  ///     Раньше это был «безобидный» fallback на случай старого
+  ///     бэкенда — и именно он срабатывал, рисуя нерабочий QR молча.
   ///
-  /// Fallback на строку — для старого бэкенда, который ещё не отдаёт
-  /// `qr_bytes`. Он даёт каракули в банке, но лучше, чем пустое место.
-  static Widget buildQrWidget(
-      String? qrBytesB64, String? qrString, double size) {
+  ///     Теперь при пустом `qr_bytes` строка кодируется в CP1251
+  ///     самостоятельно (`cp1251Encode`): QR верный и со старым
+  ///     сервером.
+  static Uint8List? _qrPayload(String? qrBytesB64, String? qrString) {
     if (qrBytesB64 != null && qrBytesB64.isNotEmpty) {
       try {
-        final bytes = base64Decode(qrBytesB64);
-        final qr = QrCode.fromUint8List(
-          data: bytes,
-          errorCorrectLevel: QrErrorCorrectLevel.M,
-        );
-        return QrImageView.withQr(
-          qr: qr,
-          size: size,
-          backgroundColor: Colors.white,
-        );
-      } catch (_) {}
+        return base64Decode(qrBytesB64);
+      } catch (_) {
+        // Поле испорчено — кодируем строку сами, ниже.
+      }
     }
-    return QrImageView(
-      data: qrString ?? '',
-      version: QrVersions.auto,
+    if (qrString != null && qrString.isNotEmpty) {
+      return cp1251Encode(qrString);
+    }
+    return null;
+  }
+
+  /// QR-виджет из байтов CP1251.
+  static Widget buildQrWidget(
+      String? qrBytesB64, String? qrString, double size) {
+    final bytes = _qrPayload(qrBytesB64, qrString);
+    if (bytes == null) return const SizedBox.shrink();
+    final qr = QrCode.fromUint8List(
+      data: bytes,
+      errorCorrectLevel: QrErrorCorrectLevel.M,
+    );
+    return QrImageView.withQr(
+      qr: qr,
       size: size,
       backgroundColor: Colors.white,
-      errorCorrectionLevel: QrErrorCorrectLevel.M,
     );
   }
 
-  /// QR-код как PNG — для вставки в PDF. Та же логика байтов.
+  /// QR-код как PNG — для вставки в PDF. Те же байты.
   static Future<Uint8List> generateQrPng(
       String? qrBytesB64, String? qrString,
       {double size = 200}) async {
-    if (qrBytesB64 != null && qrBytesB64.isNotEmpty) {
-      try {
-        final bytes = base64Decode(qrBytesB64);
-        final qr = QrCode.fromUint8List(
-          data: bytes,
-          errorCorrectLevel: QrErrorCorrectLevel.M,
-        );
-        final painter = QrPainter.withQr(qr: qr, gapless: true);
-        final imageData = await painter.toImageData(size);
-        return imageData!.buffer.asUint8List();
-      } catch (_) {}
+    final bytes = _qrPayload(qrBytesB64, qrString);
+    if (bytes == null) {
+      throw StateError('Нет данных для QR-кода');
     }
-    final painter = QrPainter(
-      data: qrString ?? '',
-      version: QrVersions.auto,
-      errorCorrectionLevel: QrErrorCorrectLevel.M,
-      gapless: true,
+    final qr = QrCode.fromUint8List(
+      data: bytes,
+      errorCorrectLevel: QrErrorCorrectLevel.M,
     );
+    final painter = QrPainter.withQr(qr: qr, gapless: true);
     final imageData = await painter.toImageData(size);
     return imageData!.buffer.asUint8List();
   }
