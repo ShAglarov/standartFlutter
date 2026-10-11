@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -47,6 +48,10 @@ class ReceiptView {
         services.fold<double>(
             0, (sum, s) => sum + ((s['debt_end'] as num?)?.toDouble() ?? 0));
     final qrString = receiptData?['qr_string'] as String?;
+    // Байты QR в CP1251 (base64) — именно их объявляет маркер ST00011.
+    // Рисовать из строки нельзя: qr_flutter кодирует её в UTF-8, банк
+    // читает маркер, декодирует как CP1251 и показывает каракули.
+    final qrBytesB64 = receiptData?['qr_bytes'] as String?;
     // Почему QR не сформирован — текстом. Локальный fallback убран: он
     // собирал строку без получателя (Name/PersonalAcc/BankName/BIC/
     // CorrespAcc по ГОСТ Р 56042-2014), жилец её сканировал, и оплата
@@ -299,13 +304,7 @@ class ReceiptView {
                             fontSize: 10, color: Colors.grey.shade600)),
                     const SizedBox(height: 8),
                     Center(
-                      child: QrImageView(
-                        data: qrString,
-                        version: QrVersions.auto,
-                        size: 160,
-                        backgroundColor: Colors.white,
-                        errorCorrectionLevel: QrErrorCorrectLevel.M,
-                      ),
+                      child: buildQrWidget(qrBytesB64, qrString, 160),
                     ),
                     const SizedBox(height: 4),
                     Text('Сумма: ${_fmt(qrAmount)} ₽',
@@ -363,6 +362,7 @@ class ReceiptView {
                           dateStr,
                           timeStr,
                           qrString: qrString,
+                          qrBytesB64: qrBytesB64,
                           qrAmount: qrAmount,
                           qrError: qrError,
                           totalDebt: effectiveDebt,
@@ -460,16 +460,62 @@ class ReceiptView {
     }
   }
 
-  /// QR-код как PNG — для вставки в PDF.
-  static Future<Uint8List> generateQrPng(String data,
+  /// QR-виджет из CP1251-байтов, с запасом на строку.
+  ///
+  /// Байты передаются в генератор НАПРЯМУЮ (`QrCode.fromUint8List`):
+  /// `QrImageView(data: ...)` прогнал бы строку через `utf8.encode`, и
+  /// в коде оказались бы UTF-8 байты вместо объявленных в ST00011.
+  ///
+  /// Fallback на строку — для старого бэкенда, который ещё не отдаёт
+  /// `qr_bytes`. Он даёт каракули в банке, но лучше, чем пустое место.
+  static Widget buildQrWidget(
+      String? qrBytesB64, String? qrString, double size) {
+    if (qrBytesB64 != null && qrBytesB64.isNotEmpty) {
+      try {
+        final bytes = base64Decode(qrBytesB64);
+        final qr = QrCode.fromUint8List(
+          data: bytes,
+          errorCorrectLevel: QrErrorCorrectLevel.M,
+        );
+        return QrImageView.withQr(
+          qr: qr,
+          size: size,
+          backgroundColor: Colors.white,
+        );
+      } catch (_) {}
+    }
+    return QrImageView(
+      data: qrString ?? '',
+      version: QrVersions.auto,
+      size: size,
+      backgroundColor: Colors.white,
+      errorCorrectionLevel: QrErrorCorrectLevel.M,
+    );
+  }
+
+  /// QR-код как PNG — для вставки в PDF. Та же логика байтов.
+  static Future<Uint8List> generateQrPng(
+      String? qrBytesB64, String? qrString,
       {double size = 200}) async {
-    final qrPainter = QrPainter(
-      data: data,
+    if (qrBytesB64 != null && qrBytesB64.isNotEmpty) {
+      try {
+        final bytes = base64Decode(qrBytesB64);
+        final qr = QrCode.fromUint8List(
+          data: bytes,
+          errorCorrectLevel: QrErrorCorrectLevel.M,
+        );
+        final painter = QrPainter.withQr(qr: qr, gapless: true);
+        final imageData = await painter.toImageData(size);
+        return imageData!.buffer.asUint8List();
+      } catch (_) {}
+    }
+    final painter = QrPainter(
+      data: qrString ?? '',
       version: QrVersions.auto,
       errorCorrectionLevel: QrErrorCorrectLevel.M,
       gapless: true,
     );
-    final imageData = await qrPainter.toImageData(size);
+    final imageData = await painter.toImageData(size);
     return imageData!.buffer.asUint8List();
   }
 
@@ -482,6 +528,7 @@ class ReceiptView {
     String date,
     String time, {
     String? qrString,
+    String? qrBytesB64,
     double? qrAmount,
     String? qrError,
     double totalDebt = 0,
@@ -510,9 +557,12 @@ class ReceiptView {
       final debtEnd = totalDebt;
 
       pw.MemoryImage? qrImage;
-      if (qrString != null && qrString.isNotEmpty && debtEnd > 0.01) {
+      final hasQr = (qrBytesB64 != null && qrBytesB64.isNotEmpty) ||
+          (qrString != null && qrString.isNotEmpty);
+      if (hasQr && debtEnd > 0.01) {
         try {
-          final qrPng = await generateQrPng(qrString, size: 300);
+          final qrPng =
+              await generateQrPng(qrBytesB64, qrString, size: 300);
           qrImage = pw.MemoryImage(qrPng);
         } catch (_) {}
       }
