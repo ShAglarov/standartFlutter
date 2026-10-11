@@ -104,6 +104,121 @@ class ResidentAuthService {
       rethrow;
     }
   }
+
+  /// Текущий долг жильца и история платежей по периодам.
+  ///
+  /// null — лицевой счёт не привязан (404). Это не ошибка: оператор мог
+  /// ещё не указать номер счёта в профиле жильца, и экран обязан
+  /// показать подсказку, а не «ошибка сети».
+  Future<ResidentDebt?> getMyDebt() async {
+    try {
+      final response = await _dio.get(AppConstants.residentDebt);
+      return ResidentDebt.fromJson((response.data as Map).cast());
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return null;
+      rethrow;
+    }
+  }
+
+  /// Данные чека по платёжному документу жильца.
+  ///
+  /// Тот же ответ, что получает касса: чек собирается на бэкенде
+  /// (`build_receipt_data`), клиент его только печатает.
+  Future<Map<String, dynamic>> getMyReceipt(int docId) async {
+    final response = await _dio.get('${AppConstants.residentReceipt}/$docId');
+    return (response.data as Map).cast<String, dynamic>();
+  }
+}
+
+/// Один период в истории платежей.
+class DebtPeriod {
+  final int? docId;
+  final String periodLabel;
+  final double charged;
+  final double paid;
+  final double balance;
+  final bool isDebt;
+  final bool isOverpayment;
+
+  const DebtPeriod({
+    this.docId,
+    required this.periodLabel,
+    required this.charged,
+    required this.paid,
+    required this.balance,
+    required this.isDebt,
+    required this.isOverpayment,
+  });
+
+  factory DebtPeriod.fromJson(Map<String, dynamic> json) => DebtPeriod(
+        docId: json['doc_id'] as int?,
+        periodLabel: json['period_label']?.toString() ?? '',
+        charged: (json['charged'] as num?)?.toDouble() ?? 0,
+        paid: (json['paid'] as num?)?.toDouble() ?? 0,
+        balance: (json['balance'] as num?)?.toDouble() ?? 0,
+        isDebt: json['is_debt'] as bool? ?? false,
+        isOverpayment: json['is_overpayment'] as bool? ?? false,
+      );
+}
+
+/// Долг жильца: сумма, периоды и история.
+class ResidentDebt {
+  final double debt;
+  final double overpayment;
+  final bool hasDebt;
+
+  /// За какие месяцы долг — подпись готовит бэкенд тем же кодом, что
+  /// печатает её в чеке.
+  final String debtPeriodLabel;
+  final String? fio;
+  final String? address;
+  final String? apartment;
+
+  /// Номер счёта и последний документ — для кнопки «Получить чек».
+  final String? accountNumber;
+  final int? lastDocId;
+  final List<DebtPeriod> history;
+
+  const ResidentDebt({
+    required this.debt,
+    required this.overpayment,
+    required this.hasDebt,
+    required this.debtPeriodLabel,
+    this.fio,
+    this.address,
+    this.apartment,
+    this.accountNumber,
+    this.lastDocId,
+    this.history = const [],
+  });
+
+  factory ResidentDebt.fromJson(Map<String, dynamic> json) {
+    final accounts = ((json['accounts'] as List?) ?? const [])
+        .map((e) => (e as Map).cast<String, dynamic>())
+        .toList();
+    // Счетов может быть несколько (отопление, ГВС). Для чека берём тот,
+    // по которому есть долг, иначе первый: у остальных история та же.
+    final primary = accounts.isEmpty
+        ? null
+        : accounts.firstWhere(
+            (a) => a['has_debt'] == true,
+            orElse: () => accounts.first,
+          );
+    return ResidentDebt(
+      debt: (json['debt'] as num?)?.toDouble() ?? 0,
+      overpayment: (json['overpayment'] as num?)?.toDouble() ?? 0,
+      hasDebt: json['has_debt'] as bool? ?? false,
+      debtPeriodLabel: json['debt_period_label']?.toString() ?? '',
+      fio: json['fio']?.toString(),
+      address: json['address']?.toString(),
+      apartment: json['apartment']?.toString(),
+      accountNumber: primary?['account_number']?.toString(),
+      lastDocId: primary?['last_doc_id'] as int?,
+      history: ((primary?['history'] as List?) ?? const [])
+          .map((e) => DebtPeriod.fromJson((e as Map).cast()))
+          .toList(),
+    );
+  }
 }
 
 /// Ответ от POST /residents/login

@@ -41,6 +41,16 @@ dependencies:
   shared_preferences: ^2.3.0
   device_info_plus: ^11.3.3
 
+  # Чек об оплате: диалог с QR и PDF «как в кассе». Версии совпадают с
+  # teploservice_flutter — чек собирается тем же кодом, и расхождение
+  # версий pdf/qr дало бы два разных документа.
+  pdf: ^3.12.0
+  qr_flutter: ^4.1.0
+  share_plus: ^12.0.2
+  # Нужен FileExportHelper: на десктопе чек сохраняется диалогом
+  # «Сохранить как», на телефоне уходит в share sheet.
+  file_picker: ^11.0.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -56,6 +66,10 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    # Шрифт для PDF-чека: пакет pdf не умеет кириллицу встроенными
+    # шрифтами — без этого файла в чеке вместо текста пустые квадраты.
+    - assets/fonts/Roboto-Regular.ttf
 
 msix_config:
   display_name: "TeploserviseMap"

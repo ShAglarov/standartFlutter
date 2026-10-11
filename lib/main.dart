@@ -108,7 +108,8 @@ class MyApp extends ConsumerWidget {
     }
 
     if (authState.status == AuthStatus.authenticated) {
-      return const ResidentHomeScreen();
+      // Через шлюз: при долге сначала красный экран, затем «Мой дом».
+      return const ResidentGateScreen();
     }
 
     return const LoginScreen();

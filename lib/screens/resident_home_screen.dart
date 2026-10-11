@@ -7,6 +7,8 @@ import '../services/token_refresh_service.dart';
 import '../models/resident_models.dart';
 import '../models/incident_models.dart';
 import '../utils/app_theme.dart';
+import '../widgets/receipt_view.dart';
+import 'resident_debt_screen.dart';
 import 'resident_incident_detail_screen.dart';
 import 'resident_profile_screen.dart';
 
@@ -42,6 +44,51 @@ final residentIncidentsProvider = FutureProvider<List<IncidentResponse>>((ref) a
   final rawList = await authService.getMyIncidents();
   return rawList.map((json) => IncidentResponse.fromJson(json)).toList();
 });
+
+/// Долг жильца. null — лицевой счёт не привязан.
+///
+/// Сумму и историю считает бэкенд тем же кодом, что печатает чек
+/// (`_calc_running_balance`): свой расчёт на клиенте разошёлся бы с
+/// чеком, который жилец получает этой же кнопкой.
+final residentDebtProvider = FutureProvider<ResidentDebt?>((ref) async {
+  ref.watch(_residentRefreshTrigger);
+  return ref.watch(residentAuthServiceProvider).getMyDebt();
+});
+
+/// Экран жильца: при долге сначала красное предупреждение.
+///
+/// Отдельной обёрткой, а не условием внутри дома: «Мой дом» со своими
+/// табами и подписками на WebSocket не должен знать про долг, а долг —
+/// про инциденты.
+class ResidentGateScreen extends ConsumerStatefulWidget {
+  const ResidentGateScreen({super.key});
+
+  @override
+  ConsumerState<ResidentGateScreen> createState() =>
+      _ResidentGateScreenState();
+}
+
+class _ResidentGateScreenState extends ConsumerState<ResidentGateScreen> {
+  /// Жилец нажал «Мой дом» — предупреждение больше не показываем до
+  /// перезапуска. Иначе он не смог бы дойти до заявок.
+  bool _dismissed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final debtAsync = ref.watch(residentDebtProvider);
+
+    // Пока долг не загружен — сразу дом: белый экран ожидания хуже,
+    // чем предупреждение, появившееся секундой позже.
+    final debt = debtAsync.asData?.value;
+    if (_dismissed || debt == null || !debt.hasDebt) {
+      return const ResidentHomeScreen();
+    }
+    return ResidentDebtScreen(
+      debt: debt,
+      onContinue: () => setState(() => _dismissed = true),
+    );
+  }
+}
 
 class ResidentHomeScreen extends ConsumerStatefulWidget {
   const ResidentHomeScreen({super.key});
@@ -163,9 +210,14 @@ class _ResidentHomeScreenState extends ConsumerState<ResidentHomeScreen>
           return RefreshIndicator(
             onRefresh: () async {
               ref.invalidate(residentIncidentsProvider);
+              ref.invalidate(residentDebtProvider);
               await _loadProfile();
             },
-            child: TabBarView(
+            child: Column(
+              children: [
+                _buildDebtCard(),
+                Expanded(
+                  child: TabBarView(
               controller: _tabController,
               children: [
                 _buildList(
@@ -185,6 +237,9 @@ class _ResidentHomeScreenState extends ConsumerState<ResidentHomeScreen>
                   emptySubtitle: 'Завершённые инциденты появятся здесь',
                 ),
               ],
+                  ),
+                ),
+              ],
             ),
           );
         },
@@ -192,6 +247,197 @@ class _ResidentHomeScreenState extends ConsumerState<ResidentHomeScreen>
         error: (err, _) => _buildError(err, theme),
       ),
     );
+  }
+
+  /// Сумма с разделителями разрядов: «12 480,50».
+  String _money(double value) {
+    final fixed = value.toStringAsFixed(2);
+    final parts = fixed.split('.');
+    final digits = parts[0];
+    final buffer = StringBuffer();
+    for (var i = 0; i < digits.length; i++) {
+      if (i > 0 && (digits.length - i) % 3 == 0) buffer.write(' ');
+      buffer.write(digits[i]);
+    }
+    return '$buffer,${parts[1]}';
+  }
+
+  /// Карточка долга или переплаты над списком заявок.
+  ///
+  /// Жилец без привязанного счёта и жилец без начислений карточку не
+  /// видят: пустая плашка «0 ₽» только путала бы.
+  Widget _buildDebtCard() {
+    final debt = ref.watch(residentDebtProvider).asData?.value;
+    if (debt == null) return const SizedBox.shrink();
+    if (!debt.hasDebt && debt.overpayment < 0.01 && debt.history.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final hasDebt = debt.hasDebt;
+    final color = hasDebt ? AppTheme.errorRed : AppTheme.successGreen;
+    final title = hasDebt
+        ? 'Задолженность'
+        : (debt.overpayment > 0.01 ? 'Переплата' : 'Задолженности нет');
+    final amount = hasDebt
+        ? debt.debt
+        : (debt.overpayment > 0.01 ? debt.overpayment : 0.0);
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+      decoration: BoxDecoration(
+        color: color.withAlpha(22),
+        border: Border.all(color: color.withAlpha(90)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          ListTile(
+            leading: Icon(
+              hasDebt ? Icons.warning_amber_rounded : Icons.check_circle,
+              color: color,
+            ),
+            title: Text(
+              '$title${amount > 0.01 ? ': ${_money(amount)} ₽' : ''}',
+              style: TextStyle(
+                  fontWeight: FontWeight.bold, fontSize: 15, color: color),
+            ),
+            subtitle: debt.debtPeriodLabel.isNotEmpty
+                ? Text('за ${debt.debtPeriodLabel}',
+                    style: const TextStyle(fontSize: 12))
+                : (debt.accountNumber != null
+                    ? Text('Лицевой счёт ${debt.accountNumber}',
+                        style: const TextStyle(fontSize: 12))
+                    : null),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: debt.history.isEmpty
+                        ? null
+                        : () => _showPaymentHistory(debt),
+                    icon: const Icon(Icons.history, size: 18),
+                    label: const Text('История'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: debt.lastDocId == null
+                        ? null
+                        : () => _openReceipt(debt.lastDocId!),
+                    style: FilledButton.styleFrom(backgroundColor: color),
+                    icon: const Icon(Icons.receipt_long, size: 18),
+                    label: const Text('Чек'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// История платежей по периодам. Чек — за любой месяц.
+  void _showPaymentHistory(ResidentDebt debt) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.7,
+        builder: (ctx, controller) => ListView.separated(
+          controller: controller,
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          itemCount: debt.history.length + 1,
+          separatorBuilder: (_, _) => const Divider(height: 1),
+          itemBuilder: (ctx, index) {
+            if (index == 0) {
+              return const Padding(
+                padding: EdgeInsets.only(bottom: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('История платежей',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w600)),
+                    SizedBox(height: 4),
+                    Text(
+                      'Нажмите на месяц, чтобы получить чек за этот период.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ],
+                ),
+              );
+            }
+            final row = debt.history[index - 1];
+            final isDebt = row.isDebt;
+            return ListTile(
+              dense: true,
+              title: Text(row.periodLabel,
+                  style: const TextStyle(fontSize: 14)),
+              subtitle: Text(
+                [
+                  if (row.charged > 0.01) 'начислено ${_money(row.charged)} ₽',
+                  if (row.paid > 0.01) 'оплачено ${_money(row.paid)} ₽',
+                ].join(' • '),
+                style: const TextStyle(fontSize: 11),
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    isDebt
+                        ? 'долг ${_money(row.balance)} ₽'
+                        : (row.isOverpayment
+                            ? 'переплата ${_money(row.balance.abs())} ₽'
+                            : 'закрыт'),
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: isDebt
+                          ? AppTheme.errorRed
+                          : AppTheme.successGreen,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  const Icon(Icons.receipt_long, size: 18),
+                ],
+              ),
+              onTap: row.docId == null
+                  ? null
+                  : () {
+                      Navigator.pop(ctx);
+                      _openReceipt(row.docId!);
+                    },
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  /// Чек по документу — тем же виджетом, что печатает касса.
+  Future<void> _openReceipt(int docId) async {
+    try {
+      final data = await ref
+          .read(residentAuthServiceProvider)
+          .getMyReceipt(docId);
+      if (!mounted) return;
+      await ReceiptView.show(context, receiptData: data);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Не удалось получить чек: $e'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   Widget _buildList(
